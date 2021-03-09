@@ -1,0 +1,50 @@
+// Verify attachment is included and in correct format
+var getAttachment = new GlideRecord("sys_attachment");
+getAttachment.addQuery("table_sys_id", current.sys_id);
+var oC = getAttachment.addQuery("table_name", "sys_data_source");
+oC.addOrCondition("table_name", "sc_cart_item");
+getAttachment.query();
+while(getAttachment.next()){
+    if (getAttachment.getRowCount() > 1) {
+        gs.addErrorMessage("You may only attach one file at a time for this import wizard. Your import submission has been aborted.");
+        current.setAbortAction(true);
+
+    } else {
+        //Check format
+        var passedFormatCheck = false;
+        var errorCaught = true;
+        if (getAttachment.file_name.endsWith('.xlsx') == true || getAttachment.file_name.endsWith('.xls') == true ) {
+            passedFormatCheck = true;
+        } else {
+            gs.addErrorMessage("This import type is expecting submission of an Excel file (.xls or .xlsx), but a different file format was attached. Your import submission has been aborted.");
+            current.setAbortAction(true);
+        }
+    
+        if (passedFormatCheck == true) {
+			
+			var ppmDataLoader = new HNKPPMProcessDataLoads();
+			
+			//for CostPlan 
+			var costPlanimport = ppmDataLoader.processDataLoad(current, 'Evergreen Data Upload Cost Plan', 'u_hnk_cost_plan_monthly_upload');
+			//for Cost Plan Breakdown 
+			var costPlanBreakdownimport = ppmDataLoader.processDataLoad(current, 'Evergreen Data Upload Cost Plan Brekdown', 'u_hnk_cost_plan_breakdown_monthly_upload');
+			//for Benefit Plan 
+			var benefitPlanimport = ppmDataLoader.processDataLoad(current, 'Evergreen Data Upload Benefit Plan', 'u_hnk_benefit_plan_monthly_upload');
+			//for Benefit Plan Breakdown 
+			var benefitPlanBreakdownimport = ppmDataLoader.processDataLoad(current, 'Evergreen Data Upload Benefit Plan Breakdown', 'u_hnk_benefit_plan_breakdown_monthly_upload');
+			//for Actuals
+			var actualImport = ppmDataLoader.processDataLoad(current, 'Evergreen Data Upload Actual Cost', 'u_hnk_upload_project_actuals');
+    
+            //Inform the user that a email outlining the status of the import will be sent once the import is complete
+            gs.addInfoMessage("Your import file has been submitted. An email will be sent to you once the import is completed to outline any errors or warnings encountered while importing.");
+
+            // Since we inserted the data source already, abort additional insert by record producer
+            current.setAbortAction(true);
+
+    
+        } else {
+            gs.addErrorMessage('Something went wrong with the import. Please contact a system admin to investigate.');
+        }
+        
+    }
+}
