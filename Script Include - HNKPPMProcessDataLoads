@@ -1,0 +1,54 @@
+var HNKPPMProcessDataLoads = Class.create();
+HNKPPMProcessDataLoads.prototype = {
+    initialize: function() {},
+
+    processDataLoad: function(current, name, importTable) {
+        var sheetNumber;
+        switch (importTable) {
+            case 'u_hnk_cost_plan_monthly_upload':
+                sheetNumber = 2;
+                break;
+            case 'u_hnk_cost_plan_breakdown_monthly_upload':
+                sheetNumber = 3;
+                break;
+            case 'u_hnk_benefit_plan_monthly_upload':
+                sheetNumber = 4;
+                break;
+			case 'u_hnk_benefit_plan_breakdown_monthly_upload':
+				sheetNumber = 5;
+				break;
+            case 'u_hnk_upload_project_actuals':
+                sheetNumber = 6;
+                break;
+
+        }
+
+        current.name = name + '_' + gs.nowDateTime();
+        current.format = 'Excel';
+        current.file_retrieval_method = "Attachment";
+        current.type = "File";
+        current.import_set_table_name = importTable;
+        current.header_row = 1;
+        current.sheet_number = sheetNumber;
+
+        //Data source needs to be created before we can trigger the commands below, so we create the record outside of the normal record producer method
+        current.insert();
+
+        // Process file into data source record
+        var loader = new GlideImportSetLoader();
+        var importSetRec = loader.getImportSetGr(current);
+
+        // Import data from data source to import set table
+        var ranload = loader.loadImportSetTable(importSetRec, current);
+        importSetRec.state = "loaded";
+        importSetRec.update();
+		
+		var transformer = new GlideImportSetTransformer();
+		transformer.transformAllMaps(importSetRec);
+		
+		return importSetRec.sys_id;
+
+    },
+
+    type: 'HNKPPMProcessDataLoads'
+};
