@@ -1,0 +1,161 @@
+(function runTransformScript(source, map, log, target /*undefined onStart*/ ) {
+    //Validation of all data.
+    var custom_error = source.u_custom_error;
+
+    var dataCheck = true;
+
+
+    //Check if OpCo is valid.
+    var opCoRecord = new GlideRecord("core_company");
+    opCoRecord.addQuery("u_opco", true);
+    opCoRecord.addQuery("name", source.u_operating_company);
+    opCoRecord.query();
+    if (!opCoRecord.next()) {
+        ignore = true;
+        source.u_custom_error = custom_error + ";" + 'Operating Company is not valid.';
+        dataCheck = false;
+    }
+
+    //Check if start fiscal period is valid.
+    var startFiscalPeriod = new GlideRecord("fiscal_period");
+    startFiscalPeriod.addQuery("name", source.u_start_fiscal_period);
+    startFiscalPeriod.query();
+
+    if (!startFiscalPeriod.next()) {
+        ignore = true;
+        source.u_custom_error = custom_error + ";" + 'Start fiscal period is not valid.';
+        dataCheck = false;
+    }
+
+    //Check if end fiscal period is valid.
+    var endFiscalPeriod = new GlideRecord("fiscal_period");
+    endFiscalPeriod.addQuery("name", source.u_end_fiscal_period);
+    endFiscalPeriod.query();
+
+    if (!endFiscalPeriod.next()) {
+        ignore = true;
+        source.u_custom_error = custom_error + ";" + 'End fiscal period is not valid.';
+        dataCheck = false;
+    }
+
+    //Check if Currency Code is valid.
+    var currencyCode = new GlideRecord("fx_currency");
+    currencyCode.addQuery("code", source.u_currency);
+    currencyCode.query();
+
+    if (!currencyCode.next()) {
+        ignore = true;
+        source.u_custom_error = custom_error + ";" + 'Currency Code is not valid.';
+        dataCheck = false;
+    }
+
+    //Check if the Cost Category is valid.
+    var costCatValue;
+    var categoryChoice = new GlideRecord("sys_choice");
+    categoryChoice.addEncodedQuery("name=cost_plan^element=u_pl_nature^label=" + source.u_cost_category);
+    categoryChoice.query();
+    if (!categoryChoice.next()) {
+        ignore = true;
+        source.u_custom_error = custom_error + ";" + 'Cost Category is not valid.';
+        dataCheck = false;
+    }
+
+    if (JSUtil.nil(source.u_unit_cost)) {
+        ignore = true;
+        source.u_custom_error = custom_error + ";" + 'Unit Cost is blank.';
+        dataCheck = false;
+    }
+
+
+
+    //Check if the project/demand belongs to provided operating company and has same currency as the provided.
+	
+	//This will contain either the demand or the project manager.
+	var invManager = '';
+	
+    var grTask = new GlideRecord("task");
+    grTask.addQuery("number", source.u_project_demand_number);
+    grTask.query();
+    if (grTask.next()) {
+        if (grTask.sys_class_name == 'pm_project') {
+            var projectExist = true;
+            invManager = grTask.ref_pm_project.project_manager.user_name;
+            var sensitiveProject = grTask.ref_pm_project.u_sensitive_initiative;
+            if (grTask.ref_pm_project.project_currency.code != source.u_currency) {
+                ignore = true;
+                source.u_custom_error = custom_error + ";" + 'Project Currency is different than the provided currency.';
+                dataCheck = false;
+            }
+            if (grTask.ref_pm_project.u_operating_company.name != source.u_operating_company) {
+                ignore = true;
+                source.u_custom_error = custom_error + ";" + 'Project does not belongs to provided OpCo';
+                dataCheck = false;
+            }
+
+        } else if (grTask.sys_class_name == 'dmn_demand') {
+            var demandExist = true;
+            invManager = grTask.ref_dmn_demand.demand_manager.user_name;
+            var sensitiveDemand = grTask.ref_dmn_demand.u_sensitive_initiative;
+            if (grTask.ref_dmn_demand.project_currency.code != source.u_currency) {
+                ignore = true;
+                source.u_custom_error = custom_error + ";" + 'Project Currency is different than the provided currency.';
+                dataCheck = false;
+            }
+            if (grTask.ref_dmn_demand.u_operating_company.name != source.u_operating_company) {
+                ignore = true;
+                source.u_custom_error = custom_error + ";" + 'Demand does not belongs to provided OpCo';
+                dataCheck = false;
+            }
+        }
+    } else {
+        ignore = true;
+        source.u_custom_error = custom_error + ";" + 'Project/Demand not found.';
+        dataCheck = false;
+    }
+
+    //If all data vlidations passed then check access for the user.
+
+    var userObject = gs.getUser().getUserByID(source.sys_created_by).getRecord().getValue('user_name');
+
+    if (dataCheck == true) {
+
+        if (!(invManager == userObject) && !(userObject.hasRole('admin,it_pps_admin'))) {
+
+            var getGroupType = new GlideRecord('sys_user_group_type');
+            getGroupType.get('name', 'ITBM_PPM_PORTFOLIO_GROUP');
+
+
+            var checkUserGroups = new GlideRecord('sys_user_grmember');
+            checkUserGroups.addQuery('user.user_name', source.sys_created_by);
+            checkUserGroups.addQuery('group.type', 'CONTAINS', getGroupType.getUniqueValue());
+            checkUserGroups.addQuery('group.u_operating_company.name', source.u_operating_company);
+            checkUserGroups.query();
+
+            if (!checkUserGroups.next()) {
+
+                ignore = true;
+                source.u_custom_error = custom_error + ";" + 'User is not a demand manager/project manager of the record and it is not belongs to provided OpCo group';
+            } else {
+                if (sensitiveDemand == true || sensitiveProject == true) {
+
+                    if (!userObject.hasRole('hnk_ppm_sensitive_initiative_viewer')) {
+
+                        ignore = true;
+                        source.u_custom_error = custom_error + ";" + 'User is not a demand manager/project manager of the record and does not have  access to sensitive initiatives';
+                    }
+                }
+
+
+            }
+
+
+        }
+
+    }
+
+    if (JSUtil.notNil(custom_error)) {
+        source.u_custom_error = custom_error.replace(/^,?;/, '').replace(/'$/, '');
+    }
+
+    source.update();
+})(source, map, log, target);
